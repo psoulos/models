@@ -162,14 +162,15 @@ def _bytes_feature(value):
   return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
-def _convert_to_example(filename, image_buffer, label, synset, human, bbox,
-                        height, width):
+def _convert_to_example(filename, image_buffer, subordinate_label, basic_label,
+                        synset, human, bbox, height, width):
   """Build an Example proto for an example.
 
   Args:
     filename: string, path to an image file, e.g., '/path/to/example.JPG'
     image_buffer: string, JPEG encoding of RGB image
-    label: integer, identifier for the ground truth for the network
+    subordinate_label: integer, identifier for the ground truth for the network
+    basic_label: integer, identifier for the ground truth for the network
     synset: string, unique WordNet ID specifying the label, e.g., 'n02323233'
     human: string, human-readable label, e.g., 'red fox, Vulpes vulpes'
     bbox: list of bounding boxes; each box is a list of integers
@@ -199,14 +200,15 @@ def _convert_to_example(filename, image_buffer, label, synset, human, bbox,
       'image/width': _int64_feature(width),
       'image/colorspace': _bytes_feature(colorspace),
       'image/channels': _int64_feature(channels),
-      'image/class/label': _int64_feature(label),
+      'image/class/subordinate_label': _int64_feature(subordinate_label),
+      'image/class/basic_label': _int64_feature(basic_label),
       'image/class/synset': _bytes_feature(synset),
       'image/class/text': _bytes_feature(human),
       'image/object/bbox/xmin': _float_feature(xmin),
       'image/object/bbox/xmax': _float_feature(xmax),
       'image/object/bbox/ymin': _float_feature(ymin),
       'image/object/bbox/ymax': _float_feature(ymax),
-      'image/object/bbox/label': _int64_feature([label] * len(xmin)),
+      'image/object/bbox/label': _int64_feature([subordinate_label] * len(xmin)),
       'image/format': _bytes_feature(image_format),
       'image/filename': _bytes_feature(os.path.basename(filename)),
       'image/encoded': _bytes_feature(image_buffer)}))
@@ -326,7 +328,8 @@ def _process_image(filename, coder):
 
 
 def _process_image_files_batch(coder, thread_index, ranges, name, filenames,
-                               synsets, labels, humans, bboxes, num_shards):
+                               synsets, subordinate_labels, basic_labels,
+                               humans, bboxes, num_shards):
   """Processes and saves list of images as TFRecord in 1 thread.
 
   Args:
@@ -337,7 +340,8 @@ def _process_image_files_batch(coder, thread_index, ranges, name, filenames,
     name: string, unique identifier specifying the data set
     filenames: list of strings; each string is a path to an image file
     synsets: list of strings; each string is a unique WordNet ID
-    labels: list of integer; each integer identifies the ground truth
+    subordinate_labels: list of integer; each integer identifies the ground truth
+    basic_labels: list of integer; each integer identifies the ground truth
     humans: list of strings; each string is a human-readable label
     bboxes: list of bounding boxes for each image. Note that each entry in this
       list might contain from 0+ entries corresponding to the number of bounding
@@ -368,15 +372,16 @@ def _process_image_files_batch(coder, thread_index, ranges, name, filenames,
     files_in_shard = np.arange(shard_ranges[s], shard_ranges[s + 1], dtype=int)
     for i in files_in_shard:
       filename = filenames[i]
-      label = labels[i]
+      subordinate_label = subordinate_labels[i]
+      basic_label = basic_labels[i]
       synset = synsets[i]
       human = humans[i]
       bbox = bboxes[i]
 
       image_buffer, height, width = _process_image(filename, coder)
 
-      example = _convert_to_example(filename, image_buffer, label,
-                                    synset, human, bbox,
+      example = _convert_to_example(filename, image_buffer, subordinate_label,
+                                    basic_label, synset, human, bbox,
                                     height, width)
       writer.write(example.SerializeToString())
       shard_counter += 1
@@ -580,11 +585,11 @@ def _process_dataset(name, directory, num_shards, synset_to_human,
   """
   labels_file = name + '_labels.npz'
   print('Using %s as the labels file' % labels_file)
-  filenames, synsets, labels = _find_image_files(directory, labels_file)
+  filenames, synsets, subordinate_labels, basic_labels = _find_image_files(directory, labels_file)
   humans = _find_human_readable_labels(synsets, synset_to_human)
   bboxes = _find_image_bounding_boxes(filenames, image_to_bboxes)
-  _process_image_files(name, filenames, synsets, labels,
-                       humans, bboxes, num_shards)
+  _process_image_files(name, filenames, synsets, subordinate_labels,
+                       basic_labels, humans, bboxes, num_shards)
 
 
 def _build_synset_lookup(imagenet_metadata_file):

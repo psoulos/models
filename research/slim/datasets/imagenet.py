@@ -50,8 +50,9 @@ _SPLITS_TO_SIZES = {
 
 _ITEMS_TO_DESCRIPTIONS = {
     'image': 'A color image of varying height and width.',
-    'label': 'The label id of the image, integer between 0 and 999',
-    'label_text': 'The text of the label.',
+    'subordinate_label': 'The subordinate id of the image, integer between 1 and 1000',
+    'basic_label': 'The basic id of the image, integer between 1 and 308',
+    'label_text': 'The text of the subordinate label.',
     'object/bbox': 'A list of bounding boxes.',
     'object/label': 'A list of labels, one per each object.',
 }
@@ -148,7 +149,9 @@ def get_split(split_name, dataset_dir, file_pattern=None, reader=None):
           (), tf.string, default_value=''),
       'image/format': tf.FixedLenFeature(
           (), tf.string, default_value='jpeg'),
-      'image/class/label': tf.FixedLenFeature(
+      'image/class/subordinate_label': tf.FixedLenFeature(
+          [], dtype=tf.int64, default_value=-1),
+      'image/class/basic_label': tf.FixedLenFeature(
           [], dtype=tf.int64, default_value=-1),
       'image/class/text': tf.FixedLenFeature(
           [], dtype=tf.string, default_value=''),
@@ -166,7 +169,8 @@ def get_split(split_name, dataset_dir, file_pattern=None, reader=None):
 
   items_to_handlers = {
       'image': slim.tfexample_decoder.Image('image/encoded', 'image/format'),
-      'label': slim.tfexample_decoder.Tensor('image/class/label'),
+      'subordinate_label': slim.tfexample_decoder.Tensor('image/class/subordinate_label'),
+      'basic_label': slim.tfexample_decoder.Tensor('image/class/basic_label'),
       'label_text': slim.tfexample_decoder.Tensor('image/class/text'),
       'object/bbox': slim.tfexample_decoder.BoundingBox(
           ['ymin', 'xmin', 'ymax', 'xmax'], 'image/object/bbox/'),
