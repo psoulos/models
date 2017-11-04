@@ -111,18 +111,6 @@ tf.app.flags.DEFINE_integer('validation_shards', 128,
 tf.app.flags.DEFINE_integer('num_threads', 8,
                             'Number of threads to preprocess the images.')
 
-# The labels file contains a list of valid labels are held in this file.
-# Assumes that the file contains entries as such:
-#   n01440764
-#   n01443537
-#   n01484850
-# where each line corresponds to a label expressed as a synset. We map
-# each synset contained in the file to an integer (based on the alphabetical
-# ordering). See below for details.
-tf.app.flags.DEFINE_string('labels_file',
-                           'imagenet_lsvrc_2015_synsets.txt',
-                           'Labels file')
-
 # This file containing mapping from synset to human-readable label.
 # Assumes each line of the file looks like:
 #
@@ -462,7 +450,7 @@ def _process_image_files(name, filenames, synsets, labels, humans,
 
 
 def _find_image_files(data_dir, labels_file):
-  """Build a list of all images files and labels in the data set.
+  """Build a list of all images files subordinate labels and basic labels in the data set.
 
   Args:
     data_dir: string, path to the root directory of images.
@@ -475,50 +463,48 @@ def _find_image_files(data_dir, labels_file):
 
       where 'n01440764' is the unique synset label associated with these images.
 
-    labels_file: string, path to the labels file.
+    labels_file: string, path to the npz labels file.
 
-      The list of valid labels are held in this file. Assumes that the file
-      contains entries as such:
-        n01440764
-        n01443537
-        n01484850
-      where each line corresponds to a label expressed as a synset. We map
-      each synset contained in the file to an integer (based on the alphabetical
-      ordering) starting with the integer 1 corresponding to the synset
-      contained in the first line.
+      This npz file contains three vectors corresponding to filename,
+      subordinate label, and basic label. Assumes that the file contains entries
+      as such:
+        'filenames' 'subordinate' 'basic'
+        n01440764/ILSVRC2012_val_00000293.JPEG 0 56
 
-      The reason we start the integer labels at 1 is to reserve label 0 as an
-      unused background class.
+      Add 1 to each subordinate and basic label to reserve label 0 as an unused
+      background class.
 
   Returns:
     filenames: list of strings; each string is a path to an image file.
     synsets: list of strings; each string is a unique WordNet ID.
-    labels: list of integer; each integer identifies the ground truth.
+    subordinate_labels: list of integer; each integer identifies the ground truth.
+    basic_labels: list of integer; each integer identifies the ground truth.
   """
   print('Determining list of input files and labels from %s.' % data_dir)
-  challenge_synsets = [l.strip() for l in
-                       tf.gfile.FastGFile(labels_file, 'r').readlines()]
 
-  labels = []
+  npz_file = np.load(labels_file)
+  npz_filenames = npz_file['filenames']
+  npz_subordinate_labels = npz_file['subordinate']
+  npz_basic_labels = npz_file['basic']
+
+  print('The labels file contains %d files' % npz_filenames.shape[0])
+
+  assert np.min(npz_subordinate_labels) == 0
+  assert np.max(npz_subordinate_labels) == 999
+  assert np.min(npz_basic_labels) == 0
+  assert np.max(npz_basic_labels) == 307
+
   filenames = []
+  subordinate_labels = []
+  basic_labels = []
   synsets = []
 
-  # Leave label index 0 empty as a background class.
-  label_index = 1
-
-  # Construct the list of JPEG files and labels.
-  for synset in challenge_synsets:
-    jpeg_file_path = '%s/%s/*.JPEG' % (data_dir, synset)
-    matching_files = tf.gfile.Glob(jpeg_file_path)
-
-    labels.extend([label_index] * len(matching_files))
-    synsets.extend([synset] * len(matching_files))
-    filenames.extend(matching_files)
-
-    if not label_index % 100:
-      print('Finished finding files in %d of %d classes.' % (
-          label_index, len(challenge_synsets)))
-    label_index += 1
+  for i in range(npz_filenames.shape[0]):
+    filenames.append('%s/%s' % (data_dir, npz_filenames[i]))
+    # Add 1 to reserve label 0 as an unused background class
+    subordinate_labels.append(npz_subordinate_labels[i] + 1)
+    basic_labels.append(npz_basic_labels[i] + 1)
+    synsets.append(npz_filenames[i].split('/')[0])
 
   # Shuffle the ordering of all image files in order to guarantee
   # random ordering of the images with respect to label in the
@@ -529,11 +515,10 @@ def _find_image_files(data_dir, labels_file):
 
   filenames = [filenames[i] for i in shuffled_index]
   synsets = [synsets[i] for i in shuffled_index]
-  labels = [labels[i] for i in shuffled_index]
+  subordinate_labels = [subordinate_labels[i] for i in shuffled_index]
+  basic_labels = [basic_labels[i] for i in shuffled_index]
 
-  print('Found %d JPEG files across %d labels inside %s.' %
-        (len(filenames), len(challenge_synsets), data_dir))
-  return filenames, synsets, labels
+  return filenames, synsets, subordinate_labels, basic_labels
 
 
 def _find_human_readable_labels(synsets, synset_to_human):
@@ -593,7 +578,9 @@ def _process_dataset(name, directory, num_shards, synset_to_human,
     image_to_bboxes: dictionary mapping image file names to a list of
       bounding boxes. This list contains 0+ bounding boxes.
   """
-  filenames, synsets, labels = _find_image_files(directory, FLAGS.labels_file)
+  labels_file = name + '_labels.npz'
+  print('Using %s as the labels file' % labels_file)
+  filenames, synsets, labels = _find_image_files(directory, labels_file)
   humans = _find_human_readable_labels(synsets, synset_to_human)
   bboxes = _find_image_bounding_boxes(filenames, image_to_bboxes)
   _process_image_files(name, filenames, synsets, labels,
