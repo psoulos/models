@@ -92,7 +92,7 @@ import random
 import sys
 import threading
 
-import google3
+# import google3
 import numpy as np
 import tensorflow as tf
 
@@ -402,15 +402,16 @@ def _process_image_files_batch(coder, thread_index, ranges, name, filenames,
   sys.stdout.flush()
 
 
-def _process_image_files(name, filenames, synsets, labels, humans,
-                         bboxes, num_shards):
+def _process_image_files(name, filenames, synsets, subordinate_labels,
+                         basic_labels, humans, bboxes, num_shards):
   """Process and save list of images as TFRecord of Example protos.
 
   Args:
     name: string, unique identifier specifying the data set
     filenames: list of strings; each string is a path to an image file
     synsets: list of strings; each string is a unique WordNet ID
-    labels: list of integer; each integer identifies the ground truth
+    subordinate_labels: list of integer; each integer identifies the ground truth
+    basic_labels: list of integer; each integer identifies the ground truth
     humans: list of strings; each string is a human-readable label
     bboxes: list of bounding boxes for each image. Note that each entry in this
       list might contain from 0+ entries corresponding to the number of bounding
@@ -418,7 +419,7 @@ def _process_image_files(name, filenames, synsets, labels, humans,
     num_shards: integer number of shards for this data set.
   """
   assert len(filenames) == len(synsets)
-  assert len(filenames) == len(labels)
+  assert len(filenames) == len(subordinate_labels)
   assert len(filenames) == len(humans)
   assert len(filenames) == len(bboxes)
 
@@ -442,7 +443,7 @@ def _process_image_files(name, filenames, synsets, labels, humans,
   threads = []
   for thread_index in xrange(len(ranges)):
     args = (coder, thread_index, ranges, name, filenames,
-            synsets, labels, humans, bboxes, num_shards)
+            synsets, subordinate_labels, basic_labels, humans, bboxes, num_shards)
     t = threading.Thread(target=_process_image_files_batch, args=args)
     t.start()
     threads.append(t)
@@ -682,7 +683,8 @@ def main(unused_argv):
 
   # Build a map from synset to human-readable label.
   synset_to_human = _build_synset_lookup(FLAGS.imagenet_metadata_file)
-  image_to_bboxes = _build_bounding_box_lookup(FLAGS.bounding_box_file)
+  #image_to_bboxes = _build_bounding_box_lookup(FLAGS.bounding_box_file)
+  image_to_bboxes = {}
 
   # Run it!
   _process_dataset('validation', FLAGS.validation_directory,
